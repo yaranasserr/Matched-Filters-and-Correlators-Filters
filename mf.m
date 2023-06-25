@@ -1,0 +1,242 @@
+%1-parameters
+N_bits = 1e5;        % number of bits
+SNR_range = 0:2:30;  % SNR range in dB
+m = 20;              % number of samples to represent waveform
+T = m;               % sampling instant
+s1 = ones(1, m);     % rectangular signal
+s2 = zeros(1, m);    % zero signal
+BER = [];
+CORR_BER = [];
+SIM_BER = [];
+
+%2-Generate signal
+x = randi([0 1],1,N_bits);           %Vector of random values, of size 1*e5
+
+%3-Represent each bit with proper waveform, m = 20
+waveForm = zeros(1,N_bits*m);
+for i = 0:length(x)-1 
+    if x(i+1) == 1    %if the input bit is 1 representaion is rect of amp 1
+        val = s1;    
+    else         
+        val = s2;     %else representation is zero
+    end
+    waveForm((20*i)+1:20*i+length(val)) = val;   %filling the preallocated waveform
+end
+    
+for snr = 0:2:30
+    %4-Add noise to samples
+    noisyWF = awgn(waveForm, snr, 'measured');
+    
+  %5-comparing between matched filter, correlator and simple detector:
+    
+  %i-Response of matched filter
+    h = fliplr(s1);             %reflection and shift with t=T
+    
+    received = zeros(1,length(x));
+    convOP = zeros(1,(2*20-1)*length(x));
+    
+    for i = 0:length(x)-1
+        noisyWF_20 = noisyWF((i*20)+1:(i+1)*20);    %Extracting 20 samples
+        c = conv(noisyWF_20,h);
+        
+        %Concatenating the conv results
+        convOP( (length(h)+length(noisyWF_20)-1)*i+1:(length(h)+length(noisyWF_20)-1)*i+length(c) ) = c;  
+        mid_point = 20 + (length(h)+length(noisyWF_20)-1)*(i);    %middle sample index
+        received(i+1) = convOP(mid_point);                        %concatenating the middle sample to the o/p   
+    end
+    
+    %Calculating threshold
+    V_TH = (s1+s2)/2;
+    
+    received_TH = zeros(1,N_bits);
+    for j = 1:length(received)
+        if(received(j) >= V_TH)
+            received_TH(j) = 1;
+        else
+            received_TH(j) = 0;
+        end 
+    end
+    
+    %calculating matched filter BER
+    [~, ratio] = biterr(x, received_TH);
+    BER = [BER ratio]; 
+     
+  %ii- Correlator receiver   
+     g = s1 - s2;
+    corr_output = zeros(1, N_bits);
+    for i = 1:N_bits
+        start_idx = (i-1)*m+1;
+        end_idx = i*m;
+        corr_output(i) = sum(noisyWF(start_idx:end_idx).*g);
+    end
+    
+    %comparing with threshold
+    corr_Received_TH = zeros(1,N_bits);
+    for j = 1:length(corr_output)
+         if(corr_output(j) >= V_TH)
+            corr_Received_TH(j) = 1;
+        else
+            corr_Received_TH(j) = 0;
+        end 
+    end
+    
+    %calculating correlator receiver BER
+    [~, ratio] = biterr(x, corr_Received_TH);
+    CORR_BER = [CORR_BER ratio];
+    
+  %iii- simple detector
+    simple_Received_TH = zeros(1,length(noisyWF));
+    for k = 1:length(noisyWF)
+         if(noisyWF(k) >= V_TH)
+            simple_Received_TH(k) = 1;
+        else
+            simple_Received_TH(k) = 0;
+        end 
+    end
+    
+    %calculating simple detector BER
+    [number, ratio] = biterr(waveForm, simple_Received_TH);
+    SIM_BER = [SIM_BER ratio];
+end
+
+%plotting matched filter vs correlator vs simple detector
+figure;
+semilogy(SNR_range, BER,'LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+hold on;
+semilogy(SNR_range, CORR_BER,'o','LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+hold on;
+semilogy(SNR_range, SIM_BER,'LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+title('V_th = (s1-s2)/2 for matched and correlator');
+legend('Matched filter receiver','Correlator','Simple detector');
+
+%%
+%%%%%%%updates of mf%%%%%%%%%%%
+%1-parameters
+N_bits = 1e5;        % number of bits
+SNR_range = 0:2:30;  % SNR range in dB
+m = 20;              % number of samples to represent waveform
+T = 20;               % sampling instant
+s1 = ones(1, m);     % rectangular signal
+s2 = zeros(1, m);    % zero signal
+BER = [];
+CORR_BER = [];
+SIM_BER = [];
+
+
+%2-Generate signal
+x = randi([0 1],1,N_bits);           %Vector of random values, of size 1*e5
+
+%3-Represent each bit with proper waveform, m = 20
+waveForm = zeros(1,N_bits*m);
+
+for i = 1:length(x)   
+    if x(i) == 1    %if the input bit is 1 representaion is rect of amp 1
+        waveForm((i-1)*m+1:i*m) = s1;    
+    else         
+        waveForm((i-1)*m+1:i*m) = s2;     %else representation is zero
+    end
+end
+
+ P = (1/N_bits) * sum(abs(waveForm).^2)       %This calculates the average power of the transmitted signal.
+ tx_power = sum(waveForm.^2)/length(waveForm) %transmitted signal power
+ 
+for snr = 0:2:30
+    %4-Add noise to samples
+    noisyWF = awgn(waveForm, snr, 'measured');
+    
+  %5-comparing between matched filter, correlator and simple detector:
+    
+  %i-Response of matched filter
+    h_mf = fliplr(s1);      %reflection and shift with t=T "impulse response" of matched filter
+    
+    received_mf = zeros(1,N_bits);
+    mf_output = zeros(1,N_bits);
+    
+    for i = 1 : N_bits
+        noisyWF_sample = noisyWF((i-1)*m+1:i*m);    %Extracting 20 samples
+        mf_sample = conv(noisyWF_sample,h_mf);
+        mf_output(i) = mf_sample(T);           %convolution output at the sampling instant
+    end
+    
+    %Calculating threshold 
+    V_TH = (sum(s1.*s1)-sum(s2.*s2))/2;
+    V_TH_simple = (s1+s2)/2;
+    
+    received_TH = zeros(1,N_bits);
+    
+    for j = 1:length(mf_output)
+        if(mf_output(j) >= V_TH)
+            received_TH(j) = 1;
+        else
+            received_TH(j) = 0;
+        end 
+    end
+    
+    %calculating matched filter BER
+    [~, ratio] = biterr(x, received_TH);
+    BER = [BER ratio]; 
+     
+  %ii- Correlator receiver   
+     g = s1 - s2;
+    corr_output = zeros(1, N_bits);
+    
+    for i = 1:N_bits
+        start_idx = (i-1)*m+1;
+        end_idx = i*m;
+        corr_output(i) = sum(noisyWF(start_idx:end_idx).*g);      
+    end
+    
+    %comparing with threshold
+    corr_Received_TH = zeros(1,N_bits);
+    
+    for j = 1:length(corr_output)
+         if(corr_output(j) >= V_TH)
+            corr_Received_TH(j) = 1;
+        else
+            corr_Received_TH(j) = 0;
+        end 
+    end
+    
+    %calculating correlator receiver BER
+    [~, ratio] = biterr(x, corr_Received_TH);
+    CORR_BER = [CORR_BER ratio];
+    
+  %iii- simple detector
+    simple_Received_TH = zeros(1,length(noisyWF));
+    
+    for k = 1:length(noisyWF)
+         if(noisyWF(k) >= V_TH_simple)
+            simple_Received_TH(k) = 1;
+        else
+            simple_Received_TH(k) = 0;
+        end 
+    end
+    
+    %calculating simple detector BER
+    [number, ratio] = biterr(waveForm, simple_Received_TH);
+    SIM_BER = [SIM_BER ratio];
+end
+
+%plotting matched filter vs correlator vs simple detector
+figure;
+semilogy(SNR_range, BER,'LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+hold on;
+semilogy(SNR_range, CORR_BER,'o','LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+hold on;
+semilogy(SNR_range, SIM_BER,'LineWidth', 2);
+xlabel('SNR (dB)');
+ylabel('BER');
+legend('Matched filter receiver','Correlator','Simple detector');
+
+
+
